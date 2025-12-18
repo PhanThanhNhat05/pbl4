@@ -7,7 +7,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
 import Measurement from './pages/Measurement';
 import './App.css';
-
+import Admin from './pages/Admin';
 const theme = createTheme({
   palette: {
     primary: {
@@ -42,6 +42,14 @@ function App() {
                   </ProtectedRoute>
                 }
               />
+              <Route
+  path="/admin"
+  element={
+    <ProtectedRoute>
+      <Admin />
+    </ProtectedRoute>
+  }
+/>
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </div>

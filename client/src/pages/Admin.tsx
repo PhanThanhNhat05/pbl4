@@ -28,6 +28,9 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  Tabs,
+  Tab,
+  Tooltip,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -52,8 +55,23 @@ interface User {
   createdAt: string;
 }
 
+interface AdminMeasurement {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  heartRate: number;
+  prediction: string;
+  confidence: number;
+  riskLevel: string;
+  isAnomaly: boolean;
+  createdAt: string;
+}
+
 const Admin: React.FC = () => {
   const { user } = useAuth();
+  const [tab, setTab] = useState<'users' | 'measurements'>('users');
+  // Users
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -64,11 +82,25 @@ const Admin: React.FC = () => {
   const [openDialog, setOpenDialog] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
+  // Measurements (admin view)
+  const [measurements, setMeasurements] = useState<AdminMeasurement[]>([]);
+  const [measurementPage, setMeasurementPage] = useState(1);
+  const [measurementTotalPages, setMeasurementTotalPages] = useState(1);
+  const [measurementLoading, setMeasurementLoading] = useState(false);
+  const [measurementFilters, setMeasurementFilters] = useState<{
+    prediction?: string;
+    riskLevel?: string;
+    isAnomaly?: string;
+  }>({});
+
   useEffect(() => {
-    if (user?.role === 'admin') {
+    if (user?.role !== 'admin') return;
+    if (tab === 'users') {
       fetchUsers();
+    } else {
+      fetchMeasurements();
     }
-  }, [page, search, user]);
+  }, [page, search, tab, measurementPage, measurementFilters, user]);
 
   const fetchUsers = async () => {
     try {
@@ -88,6 +120,28 @@ const Admin: React.FC = () => {
       setError('Không thể tải danh sách người dùng');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchMeasurements = async () => {
+    try {
+      setMeasurementLoading(true);
+      const params = new URLSearchParams({
+        page: measurementPage.toString(),
+        limit: '10',
+        ...(measurementFilters.prediction && { prediction: measurementFilters.prediction }),
+        ...(measurementFilters.riskLevel && { riskLevel: measurementFilters.riskLevel }),
+        ...(measurementFilters.isAnomaly && { isAnomaly: measurementFilters.isAnomaly }),
+      });
+
+      const res = await api.get(`/api/admin/measurements?${params}`);
+      setMeasurements(res.data.data || []);
+      setMeasurementTotalPages(res.data.pagination?.pages || 1);
+    } catch (err) {
+      console.error(err);
+      setError('Không thể tải lịch sử đo');
+    } finally {
+      setMeasurementLoading(false);
     }
   };
 
@@ -174,7 +228,17 @@ const Admin: React.FC = () => {
         </Alert>
       )}
 
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3, ...{ mb: 3 } }}>
+      <Tabs
+        value={tab}
+        onChange={(_, v) => setTab(v)}
+        sx={{ mb: 2 }}
+      >
+        <Tab label="Người dùng" value="users" />
+        <Tab label="Lịch sử đo" value="measurements" />
+      </Tabs>
+
+      {/* Thống kê chung (theo users) */}
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3, mb: 3 }}>
         <Box sx={{ flex: { xs: '1 1 100%', sm: '1 1 50%', md: '1 1 25%' } }}>
           <Card>
             <CardContent>
@@ -225,6 +289,8 @@ const Admin: React.FC = () => {
         </Box>
       </Box>
 
+      {/* Tab: Quản lý người dùng */}
+      {tab === 'users' && (
       <Paper elevation={3}>
         <Box p={3}>
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
@@ -339,6 +405,184 @@ const Admin: React.FC = () => {
           </Box>
         </Box>
       </Paper>
+      )}
+
+      {/* Tab: Lịch sử đo toàn hệ thống */}
+      {tab === 'measurements' && (
+        <Paper elevation={3}>
+          <Box p={3}>
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+              <Typography variant="h6">
+                Lịch sử đo của tất cả người dùng
+              </Typography>
+              <Box display="flex" gap={2} flexWrap="wrap">
+                <FormControl size="small" sx={{ minWidth: 160 }}>
+                  <InputLabel>Loại kết quả</InputLabel>
+                  <Select
+                    label="Loại kết quả"
+                    value={measurementFilters.prediction || ''}
+                    onChange={(e) =>
+                      setMeasurementFilters((f) => ({
+                        ...f,
+                        prediction: e.target.value || undefined,
+                      }))
+                    }
+                  >
+                    <MenuItem value="">Tất cả</MenuItem>
+                    <MenuItem value="Normal">Bình thường</MenuItem>
+                    <MenuItem value="Supraventricular">Supraventricular</MenuItem>
+                    <MenuItem value="Ventricular">Ventricular</MenuItem>
+                    <MenuItem value="Paced">Paced</MenuItem>
+                    <MenuItem value="Other">Khác</MenuItem>
+                  </Select>
+                </FormControl>
+
+                <FormControl size="small" sx={{ minWidth: 140 }}>
+                  <InputLabel>Mức rủi ro</InputLabel>
+                  <Select
+                    label="Mức rủi ro"
+                    value={measurementFilters.riskLevel || ''}
+                    onChange={(e) =>
+                      setMeasurementFilters((f) => ({
+                        ...f,
+                        riskLevel: e.target.value || undefined,
+                      }))
+                    }
+                  >
+                    <MenuItem value="">Tất cả</MenuItem>
+                    <MenuItem value="Low">Low</MenuItem>
+                    <MenuItem value="Medium">Medium</MenuItem>
+                    <MenuItem value="High">High</MenuItem>
+                  </Select>
+                </FormControl>
+
+                <FormControl size="small" sx={{ minWidth: 160 }}>
+                  <InputLabel>Bất thường</InputLabel>
+                  <Select
+                    label="Bất thường"
+                    value={measurementFilters.isAnomaly || ''}
+                    onChange={(e) =>
+                      setMeasurementFilters((f) => ({
+                        ...f,
+                        isAnomaly: e.target.value || undefined,
+                      }))
+                    }
+                  >
+                    <MenuItem value="">Tất cả</MenuItem>
+                    <MenuItem value="true">Chỉ bất thường</MenuItem>
+                    <MenuItem value="false">Chỉ bình thường</MenuItem>
+                  </Select>
+                </FormControl>
+
+                <Button
+                  variant="outlined"
+                  startIcon={<RefreshIcon />}
+                  onClick={fetchMeasurements}
+                >
+                  Làm mới
+                </Button>
+              </Box>
+            </Box>
+
+            {measurementLoading ? (
+              <Box display="flex" justifyContent="center" py={4}>
+                <CircularProgress />
+              </Box>
+            ) : (
+              <>
+                <TableContainer>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Người dùng</TableCell>
+                        <TableCell>Kết quả</TableCell>
+                        {/* <TableCell>Nhịp tim</TableCell> */}
+                        <TableCell>Độ tin cậy</TableCell>
+                        <TableCell>Rủi ro</TableCell>
+                        <TableCell>Thời gian</TableCell>
+                        <TableCell>Hành động</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {measurements.map((m) => (
+                        <TableRow key={m.id}>
+                          <TableCell>
+                            <Box>
+                              <Typography variant="subtitle2">{m.userName}</Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                {m.userEmail}
+                              </Typography>
+                            </Box>
+                          </TableCell>
+                          <TableCell>
+                            <Chip
+                              label={m.prediction}
+                              color={m.prediction === 'Normal' ? 'success' : 'warning'}
+                              size="small"
+                            />
+                          </TableCell>
+                          {/* <TableCell>{m.heartRate} BPM</TableCell> */}
+                          <TableCell>
+                            {(m.confidence * 100).toFixed(1)}%
+                          </TableCell>
+                          <TableCell>
+                            <Chip
+                              label={m.riskLevel}
+                              size="small"
+                              color={
+                                m.riskLevel === 'High'
+                                  ? 'error'
+                                  : m.riskLevel === 'Medium'
+                                  ? 'warning'
+                                  : 'success'
+                              }
+                              variant="outlined"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            {new Date(m.createdAt).toLocaleString('vi-VN')}
+                          </TableCell>
+                          <TableCell>
+                            <Tooltip title="Xóa bản ghi">
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  color="error"
+                                  onClick={async () => {
+                                    if (!window.confirm('Xóa bản ghi này?')) return;
+                                    try {
+                                      await api.delete(`/api/admin/measurements/${m.id}`);
+                                      fetchMeasurements();
+                                    } catch (err) {
+                                      setError('Không thể xóa bản ghi');
+                                    }
+                                  }}
+                                  disabled={measurementLoading}
+                                >
+                                  <DeleteIcon fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+
+                <Box display="flex" justifyContent="center" mt={3}>
+                  <Pagination
+                    count={measurementTotalPages}
+                    page={measurementPage}
+                    onChange={(_, p) => setMeasurementPage(p)}
+                    color="primary"
+                  />
+                </Box>
+              </>
+            )}
+          </Box>
+        </Paper>
+      )}
 
       {/* User Detail Dialog */}
       <Dialog

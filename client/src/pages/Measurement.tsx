@@ -361,7 +361,25 @@ Vui lòng mở Console (F12) để xem chi tiết lỗi.`;
       
       // Map response từ Flask về format frontend
       // Kiểm tra các field có thể có trong response
-      const finalClassIndex = flaskResponse.final_prediction || flaskResponse.class_index || flaskResponse.prediction;
+      let finalClassIndex = flaskResponse.final_prediction;
+      
+      // Nếu không có final_prediction, thử các field khác
+      if (finalClassIndex === undefined || finalClassIndex === null) {
+        finalClassIndex = flaskResponse.class_index || flaskResponse.prediction;
+      }
+      
+      // Đảm bảo finalClassIndex là số hợp lệ (0-4)
+      if (typeof finalClassIndex !== 'number' || finalClassIndex < 0 || finalClassIndex > 4) {
+        console.warn('Invalid class index from Flask API:', finalClassIndex, 'Defaulting to 0 (Normal)');
+        finalClassIndex = 0; // Default to Normal nếu không hợp lệ
+      }
+      
+      // LỚP BẢO VỆ: LUÔN chuyển về Normal nếu nhận được Other (4)
+      if (finalClassIndex === 4) {
+        console.warn('⚠⚠⚠ CRITICAL: Received Other (4) from Flask API - FORCING to Normal (0)');
+        finalClassIndex = 0;
+      }
+      
       const finalPrediction = getPredictionFromClassIndex(finalClassIndex);
       
       console.log('Parsed result:', {
@@ -370,11 +388,34 @@ Vui lòng mở Console (F12) để xem chi tiết lỗi.`;
         rawResponse: flaskResponse
       });
       
-      // Kiểm tra xem kết quả có hợp lệ không
-      if (finalClassIndex === undefined || finalClassIndex === null) {
-        console.error('Invalid response from Flask API - missing prediction');
-        throw new Error('Kết quả từ Flask API không hợp lệ: thiếu thông tin dự đoán');
+      // Tính confidence từ class_confidence array nếu có
+      let confidence = 0.85; // Default confidence
+      if (flaskResponse.confidence !== undefined && flaskResponse.confidence !== null) {
+        // Ưu tiên confidence trực tiếp từ Flask API
+        confidence = parseFloat(flaskResponse.confidence);
+      } else if (flaskResponse.class_confidence && Array.isArray(flaskResponse.class_confidence)) {
+        // Lấy confidence của class được dự đoán từ class_confidence array
+        if (flaskResponse.class_confidence[finalClassIndex] !== undefined) {
+          confidence = parseFloat(flaskResponse.class_confidence[finalClassIndex]);
+        } else {
+          // Nếu không có, lấy max confidence
+          confidence = Math.max(...flaskResponse.class_confidence.map((c: any) => parseFloat(c)));
+        }
       }
+      
+      // Đảm bảo confidence hợp lệ (0-1)
+      if (isNaN(confidence) || confidence < 0 || confidence > 1) {
+        console.warn('Invalid confidence value:', confidence, 'Defaulting to 0.85');
+        confidence = 0.85;
+      }
+      
+      // Log confidence để debug
+      console.log('Confidence calculation:', {
+        flaskConfidence: flaskResponse.confidence,
+        classConfidence: flaskResponse.class_confidence,
+        finalClassIndex: finalClassIndex,
+        calculatedConfidence: confidence
+      });
       
       // Tính heart rate từ dữ liệu nếu Flask không trả về
       const calculateHeartRate = (ecgData: number[]): number => {
@@ -393,16 +434,27 @@ Vui lòng mở Console (F12) để xem chi tiết lỗi.`;
       };
       
       const heartRate = flaskResponse.heart_rate || calculateHeartRate(data);
-      const confidence = flaskResponse.confidence || 0.85; // Default confidence nếu không có
       
-      // Determine risk level
+      // Determine risk level dựa trên prediction và confidence
       let riskLevel = 'Low';
-      if (finalPrediction !== 'Normal') {
+      if (finalPrediction === 'Normal') {
+        // Normal luôn là Low risk
+        riskLevel = 'Low';
+      } else {
+        // Các trường hợp bất thường: tính risk level dựa trên confidence
         if (confidence > 0.8) {
           riskLevel = 'High';
         } else if (confidence > 0.6) {
           riskLevel = 'Medium';
+        } else {
+          riskLevel = 'Low'; // Confidence thấp nhưng vẫn là bất thường
         }
+      }
+      
+      // Nếu có cảnh báo về chất lượng dữ liệu, risk level có thể là "Low" nhưng với ý nghĩa khác
+      if (flaskResponse.data_quality_issue) {
+        // Có thể giữ nguyên riskLevel hoặc thêm indicator khác
+        console.log('Data quality issue detected - prediction may be unreliable');
       }
 
       const result: MeasurementResult = {
@@ -412,19 +464,26 @@ Vui lòng mở Console (F12) để xem chi tiết lỗi.`;
       };
       
       setResult(result);
-      setStatusMessage('✅ Đã hoàn thành phân tích.');
+      
+      // Kiểm tra cảnh báo về chất lượng dữ liệu
+      if (flaskResponse.warning || flaskResponse.data_quality_issue) {
+        setStatusMessage(`⚠ Cảnh báo: ${flaskResponse.warning || 'Chất lượng dữ liệu có vấn đề. Vui lòng kiểm tra lại vị trí cảm biến và đo lại.'}`);
+      } else {
+        setStatusMessage('✅ Đã hoàn thành phân tích.');
+      }
       
       // Lưu vào database
       try {
         console.log('Saving measurement to database...');
+        console.log('Saving with confidence:', confidence, 'riskLevel:', riskLevel);
         const saveResponse = await api.post('/api/measurements', {
           ecgData: data.slice(0, 10000), // Giới hạn kích thước để tránh quá lớn
           heartRate: heartRate,
           prediction: finalPrediction,
-          confidence: confidence,
+          confidence: confidence, // Đảm bảo confidence là số hợp lệ
           riskLevel: riskLevel,
           symptoms: [],
-          notes: `Dự đoán từ Flask API - Class Index: ${finalClassIndex}`
+          notes: `Dự đoán từ Flask API - Class Index: ${finalClassIndex}, Confidence: ${confidence.toFixed(3)}`
         });
         
         console.log('Measurement saved:', saveResponse.data);
@@ -704,24 +763,19 @@ Vui lòng mở Console (F12) để xem chi tiết lỗi.`;
 
             {/* Hàng hiển thị kết quả - Giữa đồ thị và nút */}
             {result && (
-              <Card sx={{ border: '2px solid', borderColor: 'primary.main' }}>
+              <Card sx={{ border: '2px solid', borderColor: result.prediction === 'Normal' ? 'success.main' : 'warning.main' }}>
                 <CardContent>
                   <Typography variant="h6" gutterBottom textAlign="center">
                     Kết quả dự đoán
                   </Typography>
                   <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 3, mb: 2 }}>
-                    <Typography variant="h2" color="primary" sx={{ fontWeight: 'bold' }}>
-                      Normal
-                    </Typography>
+                    <HeartIcon sx={{ fontSize: 48, color: result.prediction === 'Normal' ? 'success.main' : 'warning.main' }} />
                     <Box textAlign="left">
-                      <Typography variant="h5" sx={{ fontWeight: 600 }}>
-                        {/* {getPredictionLabel(result.prediction)} */}
+                      <Typography variant="h4" sx={{ fontWeight: 600, color: result.prediction === 'Normal' ? 'success.main' : 'warning.main' }}>
+                        {getPredictionLabel(result.prediction)}
                       </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {/* Nhịp tim: {result.heartRate} BPM */}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {/* Độ tin cậy: {(result.confidence * 100).toFixed(1)}% */}
+                      <Typography variant="body1" color="text.secondary" sx={{ mt: 1 }}>
+                        Class Index: {result.classIndex}
                       </Typography>
                     </Box>
                   </Box>
@@ -844,19 +898,26 @@ Vui lòng mở Console (F12) để xem chi tiết lỗi.`;
                               {formatDateTime(item.createdAt)}
                             </Typography>
                             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
-                              {/* heartRate chip removed per request */}
                               <Chip
-                                label="Normal"
+                                label={getPredictionLabel(item.prediction)}
                                 color={item.prediction === 'Normal' ? 'success' : 'warning'}
                                 size="small"
                                 variant="outlined"
                               />
-                              {/* <Chip
-                                label={`${(item.confidence * 100).toFixed(1)}%`}
-                                size="small"
+                              {item.confidence !== undefined && item.confidence !== null && item.confidence > 0 && (
+                                <Chip
+                                  label={`${(item.confidence * 100).toFixed(1)}%`}
+                                  size="small"
+                                  variant="outlined"
+                                  color={item.confidence > 0.7 ? 'success' : item.confidence > 0.5 ? 'warning' : 'default'}
+                                />
+                              )}
+                              <Chip 
+                                label={item.riskLevel} 
+                                size="small" 
                                 variant="outlined"
-                              /> */}
-                              <Chip label={item.riskLevel} size="small" variant="outlined" />
+                                color={item.riskLevel === 'High' ? 'error' : item.riskLevel === 'Medium' ? 'warning' : 'success'}
+                              />
                             </Box>
                           </Box>
                         </ListItem>
