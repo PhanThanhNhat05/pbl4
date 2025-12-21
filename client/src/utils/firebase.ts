@@ -13,7 +13,7 @@ const app = initializeApp(firebaseConfig);
 export const database: Database = getDatabase(app);
 
 // Reference to ECG data
-export const ecgRef = ref(database, 'ECG/raw');
+export const ecgRef = ref(database, 'ECG/raw211212');
 
 // Tạo ref theo user (đường dẫn đề xuất: ECG/{userId}/raw)
 export const getUserECGRef = (userId: string) => ref(database, `ECG/${userId}/raw`);

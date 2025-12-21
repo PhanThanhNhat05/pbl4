@@ -104,7 +104,7 @@ def ecg_to_beats(ecg_adc, fs=250, global_size=450, new_fs=120):
         hb = np.pad(hb, (0, max(0, global_size - len(hb))), "constant")[:global_size]
         hb = resample(hb, int(global_size * new_fs / fs))
         hb = (hb - hb.mean()) / (hb.std() + 1e-8)
-        beats.append(hb)
+        beats.append(hb[:150])
 
     return np.array(beats)
 

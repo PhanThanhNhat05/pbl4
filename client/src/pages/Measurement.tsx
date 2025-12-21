@@ -14,6 +14,11 @@ import {
   ListItemIcon,
   ListItemText,
   Divider,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import {
   Favorite as HeartIcon,
@@ -30,6 +35,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer } fro
 import api from '../utils/axios';
 import { fetchECGDataAsArray, fetchECGDataAsArrayForUser, processECGForDisplay, processECGForModel } from '../utils/firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { useMemo } from 'react';
 
 interface MeasurementResult {
   classIndex: number;
@@ -46,6 +52,20 @@ interface HistoryItem {
   createdAt: string;
 }
 
+interface MeasurementDetail {
+  _id: string;
+  heartRate?: number;
+  prediction?: string;
+  confidence?: number;
+  riskLevel?: string;
+  createdAt?: string;
+  ecgData?: number[];
+  symptoms?: string[] | string;
+  notes?: string;
+  userName?: string;
+  userEmail?: string;
+}
+
 const Measurement: React.FC = () => {
   const [ecgData, setEcgData] = useState<number[]>([]);
   const [result, setResult] = useState<MeasurementResult | null>(null);
@@ -56,6 +76,8 @@ const Measurement: React.FC = () => {
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState('');
+  const [selectedHistoryMeasurement, setSelectedHistoryMeasurement] = useState<MeasurementDetail | null>(null);
+  const [openHistoryDialog, setOpenHistoryDialog] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null); 
   const [useSampleData, setUseSampleData] = useState<boolean>(false);
   const [dataSource, setDataSource] = useState<'sample' | 'device' | null>(null);
@@ -103,6 +125,24 @@ const Measurement: React.FC = () => {
   useEffect(() => {
     fetchRecentHistory();
   }, [fetchRecentHistory]);
+
+  const handleViewHistoryDetails = async (id: string) => {
+    try {
+      setHistoryError('');
+      const res = await api.get(`/api/measurements/${id}`);
+      if (res.data && res.data.success !== false) {
+        // backend may return data directly or under data
+        const m = res.data.data || res.data;
+        setSelectedHistoryMeasurement(m);
+        setOpenHistoryDialog(true);
+      } else {
+        setHistoryError('Không thể tải chi tiết kết quả');
+      }
+    } catch (err: any) {
+      console.error('Fetch measurement detail error', err);
+      setHistoryError('Không thể tải chi tiết kết quả');
+    }
+  };
 
   // Countdown timer effect
   useEffect(() => {
@@ -554,76 +594,57 @@ Vui lòng mở Console (F12) để xem chi tiết lỗi.`;
   }, [ecgData]);
   
   // Prepare chart data - kéo dãn dữ liệu ra nhiều nhất có thể
-  // Chiến lược: Lấy 1000 điểm đầu đầy đủ, phần còn lại downsample mạnh để kéo dãn ra
-  const sampleRate = 250; // Hz
-  const INITIAL_POINTS = 100; // Lấy 1000 điểm đầu đầy đủ
-  const MAX_TOTAL_POINTS = 500;  
-  let displayData: number[] = [];
-  let displayIndices: number[] = []; // Lưu index gốc để tính time chính xác
-  
-  if (processedECGData.length <= INITIAL_POINTS) {
-    // Nếu dữ liệu ít hơn 1000 điểm, lấy tất cả
-    displayData = processedECGData;
-    displayIndices = processedECGData.map((_, i) => i);
-  } else {
-    // Lấy 1000 điểm đầu đầy đủ
-    displayData = processedECGData.slice(0, INITIAL_POINTS);
-    displayIndices = Array.from({ length: INITIAL_POINTS }, (_, i) => i);
-    
-    // Phần còn lại: downsample mạnh để chỉ lấy một số điểm
-    const remainingData = processedECGData.slice(INITIAL_POINTS);
-    const remainingPoints = MAX_TOTAL_POINTS - INITIAL_POINTS;
-    
-    if (remainingData.length > 0 && remainingPoints > 0) {
-      // Tính step lớn hơn để downsample mạnh hơn
-      const step = Math.max(1, Math.ceil(remainingData.length / remainingPoints));
-      
-      // Lấy điểm với step lớn để kéo dãn ra
-      for (let i = 0; i < remainingData.length; i += step) {
-        if (displayData.length >= MAX_TOTAL_POINTS) break;
-        displayData.push(remainingData[i]);
-        displayIndices.push(INITIAL_POINTS + i);
+  // Resample helper: bin-averaging to produce evenly distributed points over full duration
+  const resampleBinAverage = (arr: number[], maxPoints: number) => {
+    if (!arr || arr.length === 0) return [];
+    if (arr.length <= maxPoints) return arr.slice();
+
+    const result: number[] = [];
+    const step = arr.length / maxPoints;
+    for (let i = 0; i < maxPoints; i++) {
+      const start = Math.floor(i * step);
+      const end = Math.floor((i + 1) * step);
+      // ensure at least one element
+      const sliceStart = Math.min(start, arr.length - 1);
+      const sliceEnd = Math.min(Math.max(end, sliceStart + 1), arr.length);
+      let sum = 0;
+      let count = 0;
+      for (let j = sliceStart; j < sliceEnd; j++) {
+        sum += arr[j];
+        count++;
       }
-      
-      // Đảm bảo lấy điểm cuối cùng để có đầy đủ dữ liệu
-      if (displayIndices[displayIndices.length - 1] < processedECGData.length - 1) {
-        const lastIndex = processedECGData.length - 1;
-        displayData.push(processedECGData[lastIndex]);
-        displayIndices.push(lastIndex);
+      if (count === 0) {
+        result.push(arr[sliceStart]);
+      } else {
+        result.push(sum / count);
       }
     }
-  }
-  
-  // Tạo chart data với time dựa trên index gốc
-  const chartData = displayData.map((value, displayIndex) => {
-    const originalIndex = displayIndices[displayIndex];
-    const timeInSeconds = originalIndex / sampleRate;
-    return {
-      time: timeInSeconds,
-      value: value
-    };
-  });
+    return result;
+  };
+
+  const sampleRate = 250; // Hz
+  const MAX_DISPLAY_POINTS = 500;
+  const chartData = useMemo(() => {
+    const resampled = resampleBinAverage(processedECGData, MAX_DISPLAY_POINTS);
+    const durationSeconds = processedECGData.length > 0 ? processedECGData.length / sampleRate : resampled.length / sampleRate;
+    if (resampled.length <= 1) {
+      return resampled.map((value, i) => ({ time: 0, value }));
+    }
+    return resampled.map((value, i) => ({
+      time: (i / (resampled.length - 1)) * durationSeconds,
+      value,
+    }));
+  }, [processedECGData]);
   
   console.log('Chart data stats:', {
     totalDataPoints: processedECGData.length,
-    displayPoints: displayData.length,
+    displayPoints: chartData.length,
     timeRange: chartData.length > 0 ? `${chartData[0].time.toFixed(2)}s - ${chartData[chartData.length - 1].time.toFixed(2)}s` : 'N/A'
   });
 
   return (
     <Box sx={{ bgcolor: 'background.default', minHeight: '100vh' }}>
-      <Box sx={{ bgcolor: 'primary.main', color: 'primary.contrastText', py: 4, mb: 4 }}>
-        <Container maxWidth="lg">
-          <Typography variant="h4" gutterBottom>
-            Hệ thống theo dõi nhịp tim
-          </Typography>
-          <Typography variant="body1" sx={{ opacity: 0.9 }}>
-            Sử dụng cảm biến ECG để đo và phân tích nhịp tim của bạn
-          </Typography>
-        </Container>
-      </Box>
-
-      <Container maxWidth="lg" sx={{ pb: 6 }}>
+      <Container maxWidth="lg" sx={{ py: 3 }}>
         <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 3 }}>
           <Box sx={{ flex: { xs: '1', md: '0 0 32%' }, display: 'flex', flexDirection: 'column', gap: 2 }}>
             <Card>
@@ -919,7 +940,13 @@ Vui lòng mở Console (F12) để xem chi tiết lỗi.`;
                                 color={item.riskLevel === 'High' ? 'error' : item.riskLevel === 'Medium' ? 'warning' : 'success'}
                               />
                             </Box>
-                          </Box>
+                        </Box>
+                        <Box>
+                          <IconButton size="small" color="primary" onClick={() => handleViewHistoryDetails(item._id)}>
+                            <ChartIcon />
+                          </IconButton>
+                        </Box>
+                      
                         </ListItem>
                         {index < historyItems.length - 1 && <Divider component="li" />}
                       </React.Fragment>
@@ -928,6 +955,72 @@ Vui lòng mở Console (F12) để xem chi tiết lỗi.`;
                 )}
               </CardContent>
             </Card>
+
+            {/* Detail dialog for history item */}
+            <Dialog
+              open={openHistoryDialog}
+              onClose={() => setOpenHistoryDialog(false)}
+              maxWidth="md"
+              fullWidth
+            >
+              <DialogTitle>Chi tiết kết quả đo</DialogTitle>
+              <DialogContent>
+                {selectedHistoryMeasurement && (
+                  <Box>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 2 }}>
+                      <Box sx={{ flex: { xs: '1 1 100%', sm: '1 1 50%' } }}>
+                        <Typography variant="subtitle2" color="text.secondary">Nhịp tim</Typography>
+                        <Typography variant="h6">{selectedHistoryMeasurement.heartRate} BPM</Typography>
+                      </Box>
+                      <Box sx={{ flex: { xs: '1 1 100%', sm: '1 1 50%' } }}>
+                        <Typography variant="subtitle2" color="text.secondary">Dự đoán</Typography>
+                        <Chip
+                          label={getPredictionLabel(selectedHistoryMeasurement.prediction || '')}
+                          color={selectedHistoryMeasurement.prediction === 'Normal' ? 'success' : 'warning'}
+                        />
+                      </Box>
+                      <Box sx={{ flex: { xs: '1 1 50%', sm: '1 1 25%' } }}>
+                        <Typography variant="subtitle2" color="text.secondary">Mức rủi ro</Typography>
+                        <Chip
+                          label={selectedHistoryMeasurement.riskLevel || ''}
+                          color={selectedHistoryMeasurement.riskLevel === 'High' ? 'error' : selectedHistoryMeasurement.riskLevel === 'Medium' ? 'warning' : 'success'}
+                          variant="filled"
+                        />
+                      </Box>
+                      <Box sx={{ flex: { xs: '1 1 50%', sm: '1 1 25%' } }}>
+                        <Typography variant="subtitle2" color="text.secondary">Độ tin cậy</Typography>
+                        <Typography variant="h6">
+                          {selectedHistoryMeasurement.confidence !== undefined && selectedHistoryMeasurement.confidence !== null
+                            ? `${(selectedHistoryMeasurement.confidence * 100).toFixed(1)}%`
+                            : 'N/A'}
+                        </Typography>
+                      </Box>
+                    </Box>
+
+                    <Typography variant="subtitle2" gutterBottom>Tín hiệu ECG</Typography>
+                    <Box height={320} mb={2}>
+                      {((selectedHistoryMeasurement as any).ecgData && (selectedHistoryMeasurement as any).ecgData.length > 0) ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={(selectedHistoryMeasurement as any).ecgData.slice(0, 1000).map((v: number, i: number) => ({ time: i / 360, value: v }))}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="time" />
+                            <YAxis />
+                            <Line type="monotone" dataKey="value" stroke="#1976d2" strokeWidth={1} dot={false} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <Box>
+                          <Typography>Không có dữ liệu ECG để hiển thị</Typography>
+                        </Box>
+                      )}
+                    </Box>
+                  </Box>
+                )}
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setOpenHistoryDialog(false)}>Đóng</Button>
+              </DialogActions>
+            </Dialog>
 
           </Box>
         </Box>

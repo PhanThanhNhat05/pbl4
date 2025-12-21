@@ -5,7 +5,12 @@ import CssBaseline from '@mui/material/CssBaseline';
 import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
+import Register from './pages/Register';
 import Measurement from './pages/Measurement';
+import Dashboard from './pages/Dashboard';
+import History from './pages/History';
+import Profile from './pages/Profile';
+import SimpleHeader from './components/SimpleHeader';
 import './App.css';
 import Admin from './pages/Admin';
 const theme = createTheme({
@@ -34,22 +39,62 @@ function App() {
           <div className="App">
             <Routes>
               <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
               <Route
                 path="/"
                 element={
                   <ProtectedRoute>
-                    <Measurement />
+                    <>
+                      <SimpleHeader />
+                      <Measurement />
+                    </>
                   </ProtectedRoute>
                 }
               />
               <Route
-  path="/admin"
-  element={
-    <ProtectedRoute>
-      <Admin />
-    </ProtectedRoute>
-  }
-/>
+                path="/dashboard"
+                element={
+                  <ProtectedRoute>
+                    <>
+                      <SimpleHeader />
+                      <Dashboard />
+                    </>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/history"
+                element={
+                  <ProtectedRoute>
+                    <>
+                      <SimpleHeader />
+                      <History />
+                    </>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/profile"
+                element={
+                  <ProtectedRoute>
+                    <>
+                      <SimpleHeader />
+                      <Profile />
+                    </>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin"
+                element={
+                  <ProtectedRoute adminOnly={true}>
+                    <>
+                      <SimpleHeader />
+                      <Admin />
+                    </>
+                  </ProtectedRoute>
+                }
+              />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </div>

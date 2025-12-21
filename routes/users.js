@@ -216,6 +216,82 @@ router.put('/:id/status', auth, async (req, res) => {
   }
 });
 
+// Admin: Update user (name, email, role, age, gender, phone)
+router.put('/:id', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Không có quyền truy cập' 
+      });
+    }
+
+    const { name, email, role, age, gender, phone } = req.body;
+    const update = {};
+    
+    if (name !== undefined) update.name = name;
+    if (email !== undefined) update.email = email;
+    if (role !== undefined) update.role = role;
+    if (age !== undefined) update.age = age;
+    if (gender !== undefined) update.gender = gender;
+    if (phone !== undefined) update.phone = phone;
+
+    // Check if email already exists (if changing email)
+    if (email) {
+      const existingUser = await User.findOne({ email, _id: { $ne: req.params.id } });
+      if (existingUser) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Email đã được sử dụng bởi người dùng khác' 
+        });
+      }
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      update,
+      { new: true, runValidators: true }
+    ).select('-password');
+
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Không tìm thấy người dùng' 
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Cập nhật thông tin người dùng thành công',
+      data: user
+    });
+  } catch (error) {
+    console.error('Update user error:', error);
+    
+    // Handle validation errors
+    if (error.name === 'ValidationError') {
+      const errors = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({ 
+        success: false, 
+        message: errors.join(', ') 
+      });
+    }
+    
+    // Handle duplicate email error
+    if (error.code === 11000) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Email đã được sử dụng bởi người dùng khác' 
+      });
+    }
+    
+    res.status(500).json({ 
+      success: false, 
+      message: 'Lỗi server: ' + (error.message || 'Không thể cập nhật thông tin người dùng')
+    });
+  }
+});
+
 // Admin: Delete user
 router.delete('/:id', auth, async (req, res) => {
   try {
@@ -223,6 +299,14 @@ router.delete('/:id', auth, async (req, res) => {
       return res.status(403).json({ 
         success: false, 
         message: 'Không có quyền truy cập' 
+      });
+    }
+
+    // Prevent deleting yourself
+    if (req.params.id === req.user.userId) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Không thể xóa chính tài khoản của bạn' 
       });
     }
 

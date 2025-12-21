@@ -56,11 +56,12 @@ const Layout: React.FC = () => {
   const handleLogout = () => {
     logout();
     handleProfileMenuClose();
+    navigate('/login');
   };
 
   const menuItems = [
     { text: 'Tổng quan', icon: <DashboardIcon />, path: '/dashboard' },
-    { text: 'Đo nhịp tim', icon: <HeartIcon />, path: '/measurement' },
+    { text: 'Đo nhịp tim', icon: <HeartIcon />, path: '/' },
     { text: 'Lịch sử', icon: <HistoryIcon />, path: '/history' },
     { text: 'Hồ sơ', icon: <PersonIcon />, path: '/profile' },
   ];
@@ -147,18 +148,27 @@ const Layout: React.FC = () => {
             open={Boolean(anchorEl)}
             onClose={handleProfileMenuClose}
           >
+            <Box sx={{ px: 1, py: 0.5 }}>
+              <Typography variant="body2" color="text.secondary" noWrap>
+                {user?.name}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" noWrap>
+                {user?.email}
+              </Typography>
+            </Box>
+            <Divider sx={{ my: 1 }} />
             <MenuItem onClick={() => { navigate('/profile'); handleProfileMenuClose(); }}>
               <ListItemIcon>
                 <SettingsIcon fontSize="small" />
               </ListItemIcon>
-              Cài đặt
+              <ListItemText>Cài đặt</ListItemText>
             </MenuItem>
             <Divider />
-            <MenuItem onClick={handleLogout}>
+            <MenuItem onClick={handleLogout} sx={{ color: 'error.main' }}>
               <ListItemIcon>
-                <LogoutIcon fontSize="small" />
+                <LogoutIcon fontSize="small" color="error" />
               </ListItemIcon>
-              Đăng xuất
+              <ListItemText>Đăng xuất</ListItemText>
             </MenuItem>
           </Menu>
         </Toolbar>

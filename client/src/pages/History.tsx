@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Container,
   Typography,
@@ -35,6 +35,7 @@ import {
   Refresh as RefreshIcon,
 } from '@mui/icons-material';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts';
+import { processECGForDisplay } from '../utils/firebase';
 import api from '../utils/axios';
 
 interface Measurement {
@@ -125,11 +126,40 @@ const History: React.FC = () => {
     return new Date(dateString).toLocaleString('vi-VN');
   };
 
-  // Prepare chart data for selected measurement
-  const chartData = selectedMeasurement?.ecgData.slice(0, 1000).map((value, index) => ({
-    time: index / 360,
-    value: value
-  })) || [];
+  // Prepare chart data for selected measurement (process + bin-averaging)
+  const chartData = useMemo(() => {
+    if (!selectedMeasurement?.ecgData || selectedMeasurement.ecgData.length === 0) return [];
+    try {
+      const processed = processECGForDisplay(selectedMeasurement.ecgData);
+      const SAMPLE_RATE = 250;
+      const MAX_POINTS = 500;
+      if (processed.length <= MAX_POINTS) {
+        return processed.map((v: number, i: number) => ({ time: i / SAMPLE_RATE, value: v }));
+      }
+      const step = processed.length / MAX_POINTS;
+      const sampled: { time: number; value: number }[] = [];
+      const durationSec = processed.length / SAMPLE_RATE;
+      for (let i = 0; i < MAX_POINTS; i++) {
+        const start = Math.floor(i * step);
+        const end = Math.floor((i + 1) * step);
+        const sliceStart = Math.min(start, processed.length - 1);
+        const sliceEnd = Math.min(Math.max(end, sliceStart + 1), processed.length);
+        let sum = 0;
+        let count = 0;
+        for (let j = sliceStart; j < sliceEnd; j++) {
+          sum += processed[j];
+          count++;
+        }
+        const avg = count > 0 ? sum / count : processed[sliceStart];
+        const t = (i / (MAX_POINTS - 1)) * durationSec;
+        sampled.push({ time: t, value: avg });
+      }
+      return sampled;
+    } catch {
+      // fallback simple slice
+      return selectedMeasurement.ecgData.slice(0, 500).map((v: number, i: number) => ({ time: i / 250, value: v }));
+    }
+  }, [selectedMeasurement]);
 
   if (loading) {
     return (
@@ -194,7 +224,7 @@ const History: React.FC = () => {
               <TableHead>
                 <TableRow>
                   <TableCell>Thời gian</TableCell>
-                  <TableCell>Nhịp tim</TableCell>
+                  {/* <TableCell>Nhịp tim</TableCell> */}
                   <TableCell>Dự đoán</TableCell>
                   <TableCell>Mức độ rủi ro</TableCell>
                   <TableCell>Độ tin cậy</TableCell>
@@ -318,7 +348,7 @@ const History: React.FC = () => {
                   <LineChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="time" />
-                    <YAxis />
+                    <YAxis domain={[0, 800]} />
                     <Line 
                       type="monotone" 
                       dataKey="value" 

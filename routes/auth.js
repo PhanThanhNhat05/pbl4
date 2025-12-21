@@ -80,9 +80,17 @@ router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Find user
-    const user = await User.findOne({ email }).select('+password');
+    if (!email || !password) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Vui lòng nhập email và mật khẩu' 
+      });
+    }
+
+    // Find user - select password field explicitly
+    const user = await User.findOne({ email: email.toLowerCase().trim() }).select('+password');
     if (!user) {
+      console.log(`Login failed: User not found for email: ${email}`);
       return res.status(401).json({ 
         success: false, 
         message: 'Email hoặc mật khẩu không đúng' 
@@ -92,6 +100,7 @@ router.post('/login', async (req, res) => {
     // Check password
     const isPasswordValid = await user.comparePassword(password);
     if (!isPasswordValid) {
+      console.log(`Login failed: Invalid password for email: ${email}`);
       return res.status(401).json({ 
         success: false, 
         message: 'Email hoặc mật khẩu không đúng' 
@@ -100,6 +109,7 @@ router.post('/login', async (req, res) => {
 
     // Check if user is active
     if (!user.isActive) {
+      console.log(`Login failed: Account inactive for email: ${email}`);
       return res.status(401).json({ 
         success: false, 
         message: 'Tài khoản đã bị khóa' 
@@ -112,6 +122,8 @@ router.post('/login', async (req, res) => {
       process.env.JWT_SECRET || 'fallback_secret',
       { expiresIn: process.env.JWT_EXPIRE || '7d' }
     );
+
+    console.log(`✅ Login successful for email: ${email}, role: ${user.role}`);
 
     res.json({
       success: true,
@@ -126,9 +138,10 @@ router.post('/login', async (req, res) => {
     });
   } catch (error) {
     console.error('Login error:', error);
+    console.error('Error stack:', error.stack);
     res.status(500).json({ 
       success: false, 
-      message: 'Lỗi server' 
+      message: 'Lỗi server: ' + error.message 
     });
   }
 });

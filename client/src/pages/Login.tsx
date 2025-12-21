@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import {
   Container,
   Paper,
@@ -10,7 +10,10 @@ import {
   Alert,
   CircularProgress,
 } from '@mui/material';
-import { Favorite as HeartIcon } from '@mui/icons-material';
+import { 
+  Favorite as HeartIcon,
+  PersonAdd as PersonAddIcon 
+} from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 
 const Login: React.FC = () => {
@@ -97,6 +100,25 @@ const Login: React.FC = () => {
             >
               {loading ? <CircularProgress size={24} /> : 'Đăng nhập'}
             </Button>
+            <Box textAlign="center" sx={{ mt: 2 }}>
+              <Typography variant="body2" color="text.secondary">
+                Chưa có tài khoản?{' '}
+                <Link 
+                  to="/register" 
+                  style={{ 
+                    textDecoration: 'none', 
+                    color: '#1976d2',
+                    fontWeight: 500,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <PersonAddIcon sx={{ fontSize: 18 }} />
+                  Đăng ký ngay
+                </Link>
+              </Typography>
+            </Box>
           </Box>
         </Paper>
       </Box>

@@ -14,7 +14,10 @@ import {
   Select,
   MenuItem,
 } from '@mui/material';
-import { Favorite as HeartIcon } from '@mui/icons-material';
+import { 
+  Favorite as HeartIcon,
+  Login as LoginIcon 
+} from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 
 const Register: React.FC = () => {
@@ -192,10 +195,21 @@ const Register: React.FC = () => {
             >
               {loading ? <CircularProgress size={24} /> : 'Đăng ký'}
             </Button>
-            <Box textAlign="center">
-              <Typography variant="body2">
+            <Box textAlign="center" sx={{ mt: 2 }}>
+              <Typography variant="body2" color="text.secondary">
                 Đã có tài khoản?{' '}
-                <Link to="/login" style={{ textDecoration: 'none' }}>
+                <Link 
+                  to="/login" 
+                  style={{ 
+                    textDecoration: 'none', 
+                    color: '#1976d2',
+                    fontWeight: 500,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <LoginIcon sx={{ fontSize: 18 }} />
                   Đăng nhập
                 </Link>
               </Typography>

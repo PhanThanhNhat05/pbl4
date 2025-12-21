@@ -56,8 +56,10 @@ router.get('/measurements', auth, requireAdmin, async (req, res) => {
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
-      .populate('userId', 'name email')
+      .populate('userId', 'name email role')
       .lean();
+    
+    console.log(`Admin: Found ${measurements.length} measurements (total: ${await Measurement.countDocuments(filter)})`);
 
     const total = await Measurement.countDocuments(filter);
 
@@ -192,6 +194,65 @@ router.delete('/measurements/:id', auth, requireAdmin, async (req, res) => {
     });
   } catch (error) {
     console.error('Admin delete measurement error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server: ' + error.message
+    });
+  }
+});
+
+// GET /api/admin/stats - system statistics
+router.get('/stats', auth, requireAdmin, async (req, res) => {
+  try {
+    const totalUsers = await User.countDocuments();
+    const activeUsers = await User.countDocuments({ isActive: true });
+    const adminUsers = await User.countDocuments({ role: 'admin' });
+    
+    const totalMeasurements = await Measurement.countDocuments();
+    const anomalyMeasurements = await Measurement.countDocuments({ isAnomaly: true });
+    const recentMeasurements = await Measurement.countDocuments({
+      createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+    });
+
+    const predictionStats = await Measurement.aggregate([
+      { $group: { _id: '$prediction', count: { $sum: 1 } } }
+    ]);
+
+    const riskLevelStats = await Measurement.aggregate([
+      { $group: { _id: '$riskLevel', count: { $sum: 1 } } }
+    ]);
+
+    const avgHeartRate = await Measurement.aggregate([
+      { $group: { _id: null, avg: { $avg: '$heartRate' } } }
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        users: {
+          total: totalUsers,
+          active: activeUsers,
+          inactive: totalUsers - activeUsers,
+          admins: adminUsers
+        },
+        measurements: {
+          total: totalMeasurements,
+          anomalies: anomalyMeasurements,
+          recent: recentMeasurements,
+          avgHeartRate: avgHeartRate[0]?.avg || 0
+        },
+        predictions: predictionStats.reduce((acc, item) => {
+          acc[item._id] = item.count;
+          return acc;
+        }, {}),
+        riskLevels: riskLevelStats.reduce((acc, item) => {
+          acc[item._id] = item.count;
+          return acc;
+        }, {})
+      }
+    });
+  } catch (error) {
+    console.error('Admin stats error:', error);
     res.status(500).json({
       success: false,
       message: 'Lỗi server: ' + error.message

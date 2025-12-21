@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+  Container,
   Card,
   CardContent,
   Typography,
@@ -88,7 +89,8 @@ const Dashboard: React.FC = () => {
   }
 
   return (
-    <Box>
+    <Container maxWidth="lg" sx={{ py: 3 }}>
+      
       <Typography variant="h4" gutterBottom>
         Chào mừng, {user?.name}!
       </Typography>
@@ -224,7 +226,7 @@ const Dashboard: React.FC = () => {
           </Card>
         </Box>
       </Box>
-    </Box>
+    </Container>
   );
 };
 
