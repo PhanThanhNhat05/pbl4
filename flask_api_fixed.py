@@ -185,6 +185,60 @@ def predict():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
+    
+
+
+@app.route("/predictt", methods=["POST"])
+def predict_with_beats():
+    try:
+        file = request.files.get("file")
+        if file is None:
+            return jsonify({"error": "No ECG file uploaded"}), 400
+
+        ecg_adc = np.loadtxt(file)
+        if len(ecg_adc) == 0:
+            return jsonify({"error": "Empty ECG file"}), 400
+
+        beats = ecg_to_beats(ecg_adc)
+        if len(beats) == 0:
+            return jsonify({
+                "beats": 0,
+                "per_beat_predictions": [],
+                "beat_confidence": [],
+                "final_prediction": -1
+            })
+
+        X = torch.tensor(beats, dtype=torch.float32).unsqueeze(1).to(device)
+
+        if not model_loaded:
+            return jsonify({
+                "beats": len(beats),
+                "per_beat_predictions": [0] * len(beats),
+                "beat_confidence": [0.0] * len(beats),
+                "final_prediction": 0
+            })
+
+        with torch.no_grad():
+            outputs = model(X)
+            probs = outputs.cpu().numpy()
+            preds = probs.argmax(axis=1)
+
+        final_pred = int(np.bincount(preds).argmax())
+        beat_confidence = probs.max(axis=1).tolist()
+        mean_prob = probs.mean(axis=0)
+
+        return jsonify({
+                "num_beats": len(beats),
+                "beats": beats.tolist(),                 # [N, beat_len]
+                "per_beat_predictions": preds.tolist(),  # [N]
+                "per_beat_confidence": beat_confidence,  # [N]
+                "final_prediction": final_pred
+            })
+
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/health", methods=["GET"])
