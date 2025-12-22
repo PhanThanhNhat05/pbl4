@@ -83,6 +83,18 @@ const Measurement: React.FC = () => {
   const [dataSource, setDataSource] = useState<'sample' | 'device' | null>(null);
   const { user } = useAuth();
 
+
+
+  //
+
+  const [beatData, setBeatData] = useState<number[][]>([]);
+const [beatPreds, setBeatPreds] = useState<number[]>([]);
+const [beatConf, setBeatConf] = useState<number[]>([]);
+const [loadingBeats, setLoadingBeats] = useState(false);
+
+
+//
+
   const steps = [
     'Chuẩn bị thiết bị',
     'Đeo cảm biến',
@@ -126,36 +138,75 @@ const Measurement: React.FC = () => {
     fetchRecentHistory();
   }, [fetchRecentHistory]);
 
-  const handleViewHistoryDetails = async (id: string) => {
-    try {
-      setHistoryError('');
-      const res = await api.get(`/api/measurements/${id}`);
-      if (res.data && res.data.success !== false) {
-        // backend may return data directly or under data
-        const m = res.data.data || res.data;
-        setSelectedHistoryMeasurement(m);
-        setOpenHistoryDialog(true);
-      } else {
-        setHistoryError('Không thể tải chi tiết kết quả');
-      }
-    } catch (err: any) {
-      console.error('Fetch measurement detail error', err);
-      setHistoryError('Không thể tải chi tiết kết quả');
-    }
-  };
+  // const handleViewHistoryDetails = async (id: string) => {
+  //   try {
+  //     setHistoryError('');
+  //     const res = await api.get(`/api/measurements/${id}`);
+  //     if (res.data && res.data.success !== false) {
+  //       // backend may return data directly or under data
+  //       const m = res.data.data || res.data;
+  //       setSelectedHistoryMeasurement(m);
+  //       setOpenHistoryDialog(true);
+  //     } else {
+  //       setHistoryError('Không thể tải chi tiết kết quả');
+  //     }
+  //   } catch (err: any) {
+  //     console.error('Fetch measurement detail error', err);
+  //     setHistoryError('Không thể tải chi tiết kết quả');
+  //   }
+  // };
 
-  // Countdown timer effect
-  useEffect(() => {
-    if (countdown !== null && countdown > 0) {
-      const timer = setTimeout(() => {
-        setCountdown(countdown - 1);
-      }, 1000);
-      return () => clearTimeout(timer);
-    } else if (countdown === 0) {
-      setCountdown(null);
-      setStatusMessage('Đã hết 1 phút. Bạn có thể bấm "Lấy dữ liệu" để tải dữ liệu từ thiết bị.');
+  // // Countdown timer effect
+  // useEffect(() => {
+  //   if (countdown !== null && countdown > 0) {
+  //     const timer = setTimeout(() => {
+  //       setCountdown(countdown - 1);
+  //     }, 1000);
+  //     return () => clearTimeout(timer);
+  //   } else if (countdown === 0) {
+  //     setCountdown(null);
+  //     setStatusMessage('Đã hết 1 phút. Bạn có thể bấm "Lấy dữ liệu" để tải dữ liệu từ thiết bị.');
+  //   }
+  // }, [countdown]);
+
+  const handleViewHistoryDetails = async (id: string) => {
+  try {
+    setHistoryError('');
+    setLoadingBeats(true);
+
+    // 1. Lấy chi tiết lịch sử đo
+    const res = await api.get(`/api/measurements/${id}`);
+    if (!res.data || res.data.success === false) {
+      throw new Error('Không thể tải chi tiết kết quả');
     }
-  }, [countdown]);
+
+    const m = res.data.data || res.data;
+    setSelectedHistoryMeasurement(m);
+
+    // 2. Nếu có ECG → phân tích từng nhịp
+    if (m.ecgData && Array.isArray(m.ecgData) && m.ecgData.length > 0) {
+      const beatRes = await callFlaskBeatAPI(m.ecgData);
+
+      setBeatData(beatRes.beats || []);
+      setBeatPreds(beatRes.per_beat_predictions || []);
+      setBeatConf(beatRes.per_beat_confidence || []);
+    } else {
+      // Không có ECG
+      setBeatData([]);
+      setBeatPreds([]);
+      setBeatConf([]);
+    }
+
+    // 3. Mở dialog SAU khi dữ liệu sẵn sàng
+    setOpenHistoryDialog(true);
+  } catch (err: any) {
+    console.error('Fetch measurement detail error', err);
+    setHistoryError(err.message || 'Không thể tải chi tiết kết quả');
+  } finally {
+    setLoadingBeats(false);
+  }
+};
+
 
   // Tải dữ liệu mẫu (nếu có) để test khi chưa có thiết bị
   const loadSampleECG = async (): Promise<number[]> => {
@@ -173,6 +224,64 @@ const Measurement: React.FC = () => {
       return [];
     }
   };
+
+
+
+const callFlaskBeatAPI = async (ecgData: number[]): Promise<{
+  num_beats: number;
+  beats: number[][];
+  per_beat_predictions: number[];
+  per_beat_confidence?: number[];
+  final_prediction?: number;
+}> => {
+  // ECG → text
+  const ecgText = ecgData.map(v => v.toString()).join('\n');
+  const blob = new Blob([ecgText], { type: 'text/plain' });
+  const file = new File([blob], 'ecg_data.txt', { type: 'text/plain' });
+
+  // FormData
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const flaskApiUrl =
+    process.env.REACT_APP_FLASK_API_URL || 'http://localhost:5000';
+
+  console.log(`Calling Flask Beat API at: ${flaskApiUrl}/predictt`);
+  console.log(`Sending ECG data: ${ecgData.length} points`);
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 60000);
+
+  try {
+    const response = await fetch(`${flaskApiUrl}/predictt`, {
+      method: 'POST',
+      body: formData,
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.error || `HTTP error ${response.status}`);
+    }
+
+    const json = await response.json();
+
+    console.log('Beat-level response:', json);
+
+    return json;
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      throw new Error('Beat API timeout');
+    }
+    throw err;
+  }
+};
+
+
+
  
   // Helper: lấy dữ liệu ECG.nếu không có thì lấy từ Firebase theo user
   const loadECGData = async (): Promise<number[]> => {
@@ -623,7 +732,7 @@ Vui lòng mở Console (F12) để xem chi tiết lỗi.`;
   };
 
   const sampleRate = 250; // Hz
-  const MAX_DISPLAY_POINTS = 500;
+  const MAX_DISPLAY_POINTS = 1500;
   const chartData = useMemo(() => {
     const resampled = resampleBinAverage(processedECGData, MAX_DISPLAY_POINTS);
     const durationSeconds = processedECGData.length > 0 ? processedECGData.length / sampleRate : resampled.length / sampleRate;
@@ -925,20 +1034,20 @@ Vui lòng mở Console (F12) để xem chi tiết lỗi.`;
                                 size="small"
                                 variant="outlined"
                               />
-                              {item.confidence !== undefined && item.confidence !== null && item.confidence > 0 && (
+                              {/* {item.confidence !== undefined && item.confidence !== null && item.confidence > 0 && (
                                 <Chip
                                   label={`${(item.confidence * 100).toFixed(1)}%`}
                                   size="small"
                                   variant="outlined"
                                   color={item.confidence > 0.7 ? 'success' : item.confidence > 0.5 ? 'warning' : 'default'}
                                 />
-                              )}
-                              <Chip 
+                              )} */}
+                              {/* <Chip 
                                 label={item.riskLevel} 
                                 size="small" 
                                 variant="outlined"
                                 color={item.riskLevel === 'High' ? 'error' : item.riskLevel === 'Medium' ? 'warning' : 'success'}
-                              />
+                              /> */}
                             </Box>
                         </Box>
                         <Box>
@@ -987,14 +1096,14 @@ Vui lòng mở Console (F12) để xem chi tiết lỗi.`;
                           variant="filled"
                         />
                       </Box>
-                      <Box sx={{ flex: { xs: '1 1 50%', sm: '1 1 25%' } }}>
+                      {/* <Box sx={{ flex: { xs: '1 1 50%', sm: '1 1 25%' } }}>
                         <Typography variant="subtitle2" color="text.secondary">Độ tin cậy</Typography>
                         <Typography variant="h6">
                           {selectedHistoryMeasurement.confidence !== undefined && selectedHistoryMeasurement.confidence !== null
                             ? `${(selectedHistoryMeasurement.confidence * 100).toFixed(1)}%`
                             : 'N/A'}
                         </Typography>
-                      </Box>
+                      </Box> */}
                     </Box>
 
                     <Typography variant="subtitle2" gutterBottom>Tín hiệu ECG</Typography>
@@ -1008,12 +1117,77 @@ Vui lòng mở Console (F12) để xem chi tiết lỗi.`;
                             <Line type="monotone" dataKey="value" stroke="#1976d2" strokeWidth={1} dot={false} />
                           </LineChart>
                         </ResponsiveContainer>
+                        
                       ) : (
                         <Box>
                           <Typography>Không có dữ liệu ECG để hiển thị</Typography>
                         </Box>
                       )}
                     </Box>
+
+                    <Typography variant="subtitle2" gutterBottom sx={{ mt: 3 }}>
+  Phân tích từng nhịp tim
+</Typography>
+
+{loadingBeats && (
+  <Box display="flex" justifyContent="center" py={2}>
+    <CircularProgress />
+  </Box>
+)}
+
+{!loadingBeats && beatData.length === 0 && (
+  <Typography variant="body2" color="text.secondary">
+    Không có dữ liệu nhịp tim để hiển thị
+  </Typography>
+)}
+
+{beatData.map((beat, i) => (
+  <Card
+    key={i}
+    sx={{
+      mb: 2,
+      borderLeft: '6px solid',
+      borderColor:
+        beatPreds[i] === 0
+          ? 'success.main'
+          : beatPreds[i] === 2
+          ? 'error.main'
+          : 'warning.main',
+    }}
+  >
+    <CardContent>
+      <Typography variant="subtitle1">
+        Beat #{i + 1} — {
+          ['Normal', 'Supraventricular', 'Ventricular', 'Paced', 'Other'][beatPreds[i]] || 'Unknown'
+        }
+        {beatConf[i] !== undefined &&
+          ` (${(beatConf[i] * 100).toFixed(1)}%)`}
+      </Typography>
+
+      <Box height={140}>
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart
+            data={beat.map((v: number, j: number) => ({
+              x: j,
+              y: v,
+            }))}
+          >
+            <XAxis dataKey="x" hide />
+            <YAxis hide />
+            <Line
+              type="monotone"
+              dataKey="y"
+              stroke="#1976d2"
+              strokeWidth={1.2}
+              dot={false}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </Box>
+    </CardContent>
+  </Card>
+))}
+
                   </Box>
                 )}
               </DialogContent>
