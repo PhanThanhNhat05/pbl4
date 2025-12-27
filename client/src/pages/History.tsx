@@ -226,8 +226,7 @@ const History: React.FC = () => {
                   <TableCell>Thời gian</TableCell>
                   {/* <TableCell>Nhịp tim</TableCell> */}
                   <TableCell>Dự đoán</TableCell>
-                  <TableCell>Mức độ rủi ro</TableCell>
-                  <TableCell>Độ tin cậy</TableCell>
+                <TableCell>Mức độ rủi ro</TableCell>
                   <TableCell>Hành động</TableCell>
                 </TableRow>
               </TableHead>
@@ -253,9 +252,6 @@ const History: React.FC = () => {
                         color={getRiskLevelColor(measurement.riskLevel) as any}
                         variant="filled"
                       />
-                    </TableCell>
-                    <TableCell>
-                      {(measurement.confidence * 100).toFixed(1)}%
                     </TableCell>
                     <TableCell>
                       <IconButton
@@ -301,7 +297,7 @@ const History: React.FC = () => {
         <DialogContent>
           {selectedMeasurement && (
             <Box>
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, ...{ mb: 3 } }}>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, ...{ mb: 3 } }}>
                 <Box sx={{ flex: { xs: '1 1 100%', sm: '1 1 50%' } }}>
                   <Typography variant="subtitle2" color="text.secondary">
                     Nhịp tim
@@ -330,14 +326,7 @@ const History: React.FC = () => {
                     variant="filled"
                   />
                 </Box>
-                <Box sx={{ flex: { xs: '1 1 50%', sm: '1 1 25%' } }}>
-                  <Typography variant="subtitle2" color="text.secondary">
-                    Độ tin cậy
-                  </Typography>
-                  <Typography variant="h6">
-                    {(selectedMeasurement.confidence * 100).toFixed(1)}%
-                  </Typography>
-                </Box>
+                {/* confidence removed from details UI */}
               </Box>
 
               <Typography variant="subtitle2" gutterBottom>

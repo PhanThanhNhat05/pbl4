@@ -112,6 +112,17 @@ const Admin: React.FC = () => {
   const [openUserEditDialog, setOpenUserEditDialog] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [openCreateUserDialog, setOpenCreateUserDialog] = useState(false);
+  const [createUserForm, setCreateUserForm] = useState({
+    name: '',
+    email: '',
+    password: '',
+    role: 'user',
+    age: '',
+    gender: '',
+    phone: '',
+    deviceId: ''
+  });
 
   // Measurements
   const [measurements, setMeasurements] = useState<AdminMeasurement[]>([]);
@@ -141,6 +152,7 @@ const Admin: React.FC = () => {
     age: '',
     gender: '',
     phone: '',
+    deviceId: ''
   });
 
   const [editMeasurementForm, setEditMeasurementForm] = useState({
@@ -274,6 +286,7 @@ const Admin: React.FC = () => {
       age: user.age?.toString() || '',
       gender: user.gender || '',
       phone: user.phone || '',
+      deviceId: (user as any).deviceId || ''
     });
     setOpenUserEditDialog(true);
   };
@@ -328,6 +341,12 @@ const Admin: React.FC = () => {
         updateData.phone = editUserForm.phone.trim();
       } else {
         updateData.phone = undefined; // Allow clearing phone
+      }
+      
+      if (editUserForm.deviceId && editUserForm.deviceId.trim()) {
+        updateData.deviceId = editUserForm.deviceId.trim();
+      } else {
+        updateData.deviceId = undefined;
       }
 
       const response = await api.put(`/api/users/${editingUser?._id}`, updateData);
@@ -429,7 +448,7 @@ const Admin: React.FC = () => {
       // Convert to CSV
       const headers = type === 'users' 
         ? ['Tên', 'Email', 'Vai trò', 'Tuổi', 'Giới tính', 'SĐT', 'Trạng thái', 'Ngày tạo']
-        : ['Người dùng', 'Email', 'Kết quả', 'Nhịp tim', 'Độ tin cậy', 'Rủi ro', 'Bất thường', 'Thời gian'];
+        : ['Người dùng', 'Email', 'Kết quả', 'Nhịp tim', 'Rủi ro', 'Bất thường', 'Thời gian'];
       
       const rows = data.map((item: any) => {
         if (type === 'users') {
@@ -449,7 +468,7 @@ const Admin: React.FC = () => {
             item.userEmail,
             item.prediction,
             item.heartRate || '',
-            `${(item.confidence * 100).toFixed(1)}%`,
+            '', // confidence hidden in UI/export
             item.riskLevel,
             item.isAnomaly ? 'Có' : 'Không',
             new Date(item.createdAt).toLocaleString('vi-VN')
@@ -591,6 +610,13 @@ const Admin: React.FC = () => {
                     startAdornment: <SearchIcon sx={{ mr: 1, color: 'text.secondary' }} />
                   }}
                 />
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={() => setOpenCreateUserDialog(true)}
+                  >
+                    Tạo người dùng
+                  </Button>
                 <Button
                   variant="outlined"
                   startIcon={<DownloadIcon />}
@@ -656,6 +682,11 @@ const Admin: React.FC = () => {
                                 {u.age && `${u.age} tuổi`}
                                 {u.gender && ` • ${getGenderLabel(u.gender)}`}
                               </Typography>
+                            { (u as any).deviceId && (
+                              <Typography variant="body2" color="text.secondary">
+                                {/* Device: {(u as any).deviceId} */}
+                              </Typography>
+                            ) }
                               {u.phone && (
                                 <Typography variant="body2" color="text.secondary">
                                   {u.phone}
@@ -828,7 +859,7 @@ const Admin: React.FC = () => {
                       <TableRow>
                         <TableCell>Người dùng</TableCell>
                         <TableCell>Kết quả</TableCell>
-                        <TableCell>Độ tin cậy</TableCell>
+                        {/* Confidence column removed */}
                         <TableCell>Rủi ro</TableCell>
                         <TableCell>Thời gian</TableCell>
                         <TableCell>Hành động</TableCell>
@@ -861,9 +892,7 @@ const Admin: React.FC = () => {
                                 size="small"
                               />
                             </TableCell>
-                            <TableCell>
-                              {(m.confidence * 100).toFixed(1)}%
-                            </TableCell>
+                            {/* confidence hidden */}
                             <TableCell>
                               <Chip
                                 label={m.riskLevel}
@@ -1110,6 +1139,12 @@ const Admin: React.FC = () => {
                 <MenuItem value="other">Khác</MenuItem>
               </Select>
             </FormControl>
+              <TextField
+                label="Device ID"
+                fullWidth
+                value={editUserForm.deviceId}
+                onChange={(e) => setEditUserForm({ ...editUserForm, deviceId: e.target.value })}
+              />
             <TextField
               label="Số điện thoại"
               fullWidth
@@ -1122,6 +1157,114 @@ const Admin: React.FC = () => {
           <Button onClick={() => setOpenUserEditDialog(false)}>Hủy</Button>
           <Button onClick={handleSaveUser} variant="contained" disabled={actionLoading}>
             {actionLoading ? <CircularProgress size={24} /> : 'Lưu'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Create User Dialog */}
+      <Dialog open={openCreateUserDialog} onClose={() => setOpenCreateUserDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Tạo người dùng mới</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            <TextField
+              label="Họ và tên"
+              fullWidth
+              value={createUserForm.name}
+              onChange={(e) => setCreateUserForm({ ...createUserForm, name: e.target.value })}
+            />
+            <TextField
+              label="Email"
+              fullWidth
+              type="email"
+              value={createUserForm.email}
+              onChange={(e) => setCreateUserForm({ ...createUserForm, email: e.target.value })}
+            />
+            <TextField
+              label="Mật khẩu"
+              fullWidth
+              type="password"
+              value={createUserForm.password}
+              onChange={(e) => setCreateUserForm({ ...createUserForm, password: e.target.value })}
+            />
+            <TextField
+              label="Device ID"
+              fullWidth
+              value={createUserForm.deviceId || ''}
+              onChange={(e) => setCreateUserForm({ ...createUserForm, deviceId: e.target.value })}
+            />
+            <FormControl fullWidth>
+              <InputLabel>Vai trò</InputLabel>
+              <Select
+                value={createUserForm.role}
+                label="Vai trò"
+                onChange={(e) => setCreateUserForm({ ...createUserForm, role: e.target.value })}
+              >
+                <MenuItem value="user">Người dùng</MenuItem>
+                <MenuItem value="admin">Quản trị viên</MenuItem>
+              </Select>
+            </FormControl>
+            <TextField
+              label="Tuổi"
+              fullWidth
+              type="number"
+              value={createUserForm.age}
+              onChange={(e) => setCreateUserForm({ ...createUserForm, age: e.target.value })}
+            />
+            <FormControl fullWidth>
+              <InputLabel>Giới tính</InputLabel>
+              <Select
+                value={createUserForm.gender}
+                label="Giới tính"
+                onChange={(e) => setCreateUserForm({ ...createUserForm, gender: e.target.value })}
+              >
+                <MenuItem value="">Không chọn</MenuItem>
+                <MenuItem value="male">Nam</MenuItem>
+                <MenuItem value="female">Nữ</MenuItem>
+                <MenuItem value="other">Khác</MenuItem>
+              </Select>
+            </FormControl>
+            <TextField
+              label="Số điện thoại"
+              fullWidth
+              value={createUserForm.phone}
+              onChange={(e) => setCreateUserForm({ ...createUserForm, phone: e.target.value })}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenCreateUserDialog(false)}>Hủy</Button>
+          <Button
+            variant="contained"
+            onClick={async () => {
+              try {
+                setActionLoading(true);
+                const payload: any = {
+                  name: createUserForm.name,
+                  email: createUserForm.email,
+                  password: createUserForm.password,
+                  role: createUserForm.role,
+                };
+                if (createUserForm.age) payload.age = parseInt(createUserForm.age);
+                if (createUserForm.gender) payload.gender = createUserForm.gender;
+                if (createUserForm.deviceId) payload.deviceId = createUserForm.deviceId;
+                if (createUserForm.phone) payload.phone = createUserForm.phone;
+                const res = await api.post('/api/users', payload);
+                if (res.data.success) {
+                  setSuccess('Tạo người dùng thành công');
+                  setOpenCreateUserDialog(false);
+                  fetchUsers();
+                } else {
+                  setError(res.data.message || 'Không thể tạo người dùng');
+                }
+              } catch (err: any) {
+                setError(err.response?.data?.message || err.message || 'Không thể tạo người dùng');
+              } finally {
+                setActionLoading(false);
+              }
+            }}
+            disabled={actionLoading}
+          >
+            {actionLoading ? <CircularProgress size={20} /> : 'Tạo'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1141,10 +1284,7 @@ const Admin: React.FC = () => {
                 <Typography variant="subtitle2" color="text.secondary">Kết quả</Typography>
                 <Chip label={selectedMeasurement.prediction} color={selectedMeasurement.prediction === 'Normal' ? 'success' : 'warning'} />
               </Box>
-              <Box sx={{ flex: '1 1 50%' }}>
-                <Typography variant="subtitle2" color="text.secondary">Độ tin cậy</Typography>
-                <Typography variant="body1">{(selectedMeasurement.confidence * 100).toFixed(1)}%</Typography>
-              </Box>
+              {/* confidence removed from UI */}
               <Box sx={{ flex: '1 1 50%' }}>
                 <Typography variant="subtitle2" color="text.secondary">Mức rủi ro</Typography>
                 <Chip

@@ -33,6 +33,13 @@ const userSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  deviceId: {
+    type: String,
+    unique: true,
+    sparse: true,
+    trim: true,
+    default: undefined
+  },
   role: {
     type: String,
     enum: ['user', 'admin'],

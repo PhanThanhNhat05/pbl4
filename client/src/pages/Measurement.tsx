@@ -863,9 +863,9 @@ Vui lòng mở Console (F12) để xem chi tiết lỗi.`;
                           type="number"
                           scale="linear"
                           label={{angle: -90, position: 'insideLeft' }}
-                          domain={[0, 800]}
+                          domain={[0, 1024]}
                           allowDataOverflow={false}
-                          ticks={[0, 200, 400, 600, 800]}
+                          ticks={[0, 200, 400, 600, 800 , 1024]}
                           tickFormatter={(value) => value.toString()}
                         />
                         <Line
@@ -1078,8 +1078,8 @@ Vui lòng mở Console (F12) để xem chi tiết lỗi.`;
                   <Box>
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 2 }}>
                       <Box sx={{ flex: { xs: '1 1 100%', sm: '1 1 50%' } }}>
-                        <Typography variant="subtitle2" color="text.secondary">Nhịp tim</Typography>
-                        <Typography variant="h6">{selectedHistoryMeasurement.heartRate} BPM</Typography>
+                        {/* <Typography variant="subtitle2" color="text.secondary">Nhịp tim</Typography>
+                        <Typography variant="h6">{selectedHistoryMeasurement.heartRate} BPM</Typography> */}
                       </Box>
                       <Box sx={{ flex: { xs: '1 1 100%', sm: '1 1 50%' } }}>
                         <Typography variant="subtitle2" color="text.secondary">Dự đoán</Typography>
@@ -1113,7 +1113,7 @@ Vui lòng mở Console (F12) để xem chi tiết lỗi.`;
                           <LineChart data={(selectedHistoryMeasurement as any).ecgData.slice(0, 1000).map((v: number, i: number) => ({ time: i / 360, value: v }))}>
                             <CartesianGrid strokeDasharray="3 3" />
                             <XAxis dataKey="time" />
-                            <YAxis />
+                            <YAxis domain={[0, 1024]} ticks={[0, 200, 400, 600, 800, 1024]}/>
                             <Line type="monotone" dataKey="value" stroke="#1976d2" strokeWidth={1} dot={false} />
                           </LineChart>
                         </ResponsiveContainer>
@@ -1160,8 +1160,6 @@ Vui lòng mở Console (F12) để xem chi tiết lỗi.`;
         Beat #{i + 1} — {
           ['Normal', 'Supraventricular', 'Ventricular', 'Paced', 'Other'][beatPreds[i]] || 'Unknown'
         }
-        {beatConf[i] !== undefined &&
-          ` (${(beatConf[i] * 100).toFixed(1)}%)`}
       </Typography>
 
       <Box height={140}>
